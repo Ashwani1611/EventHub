@@ -28,6 +28,8 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # SECURITY WARNING: keep the secret key used in production secret!
 
 SECRET_KEY = env('SECRET_KEY')
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET')
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -57,6 +59,9 @@ INSTALLED_APPS = [
 
 ASGI_APPLICATION = "config.asgi.application"
 
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET')
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -65,6 +70,20 @@ CHANNEL_LAYERS = {
         },
     },
 }
+CELERY_BEAT_SCHEDULE = {
+    "release-expired-seat-locks": {
+        "task": "events.tasks.release_expired_seat_locks",
+        "schedule": 60.0,  # every 60 seconds
+    },
+}
+
+
+REDIS_HOST = env("REDIS_HOST", default="redis")
+REDIS_PORT = env.int("REDIS_PORT", default=6379)
+
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://redis:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379/0")
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

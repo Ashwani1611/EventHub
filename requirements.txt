@@ -7,3 +7,5 @@ redis==5.0.4
 channels==4.1.0
 channels-redis==4.2.0
 celery==5.4.0
+razorpay==1.4.2
+setuptools<82

@@ -1,11 +1,28 @@
 import logging
-from django.db.models.signals import post_save
+
+from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 
 from .tasks import send_notification_task
 from .models import Notification
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(pre_save, sender="events.Booking")
+def capture_previous_status(sender, instance, **kwargs):
+    """
+    Stashes the booking's pre-save status on the instance so the
+    post_save receiver below can tell whether status actually changed
+    (and to what) in this save call.
+    """
+    if instance.pk:
+        try:
+            instance._previous_status = sender.objects.get(pk=instance.pk).status
+        except sender.DoesNotExist:
+            instance._previous_status = None
+    else:
+        instance._previous_status = None  # new booking, nothing to compare
 
 
 @receiver(post_save, sender="events.Booking")
@@ -21,7 +38,7 @@ def on_booking_created(sender, instance, created, **kwargs):
         user_id=user.id,
         notification_type=Notification.NotificationType.BOOKING_CONFIRMED,
         title="Booking Confirmed",
-        message=f"Your booking for '{instance.event.title}' has been confirmed.",
+        message=f"Your booking for '{instance.seat.event.title}' has been confirmed.",
         channel="in_app",
     )
 
@@ -30,7 +47,7 @@ def on_booking_created(sender, instance, created, **kwargs):
         user_id=user.id,
         notification_type=Notification.NotificationType.BOOKING_CONFIRMED,
         title="Booking Confirmed",
-        message=f"Your booking for '{instance.event.title}' has been confirmed.",
+        message=f"Your booking for '{instance.seat.event.title}' has been confirmed.",
         channel="email",
     )
 
@@ -39,11 +56,16 @@ def on_booking_created(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender="events.Booking")
 def on_booking_cancelled(sender, instance, created, **kwargs):
-    """Fires when an existing Booking is updated to cancelled status."""
+    """Fires when an existing Booking transitions to cancelled status."""
     if created:
         return
 
-    if not hasattr(instance, '_status_changed_to_cancelled'):
+    previous_status = getattr(instance, "_previous_status", None)
+
+    if previous_status == instance.status:
+        return  # status didn't change in this save
+
+    if instance.status != instance.Status.CANCELLED:  # adjust to your actual status enum
         return
 
     user = instance.user
@@ -52,7 +74,7 @@ def on_booking_cancelled(sender, instance, created, **kwargs):
         user_id=user.id,
         notification_type=Notification.NotificationType.BOOKING_CANCELLED,
         title="Booking Cancelled",
-        message=f"Your booking for '{instance.event.title}' has been cancelled.",
+        message=f"Your booking for '{instance.seat.event.title}' has been cancelled.",
         channel="in_app",
     )
 
