@@ -2,6 +2,8 @@
 
 import logging
 from django.utils import timezone
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,6 +14,22 @@ from .serializers import EventSerializer, SeatSerializer, BookingSerializer
 from .lock_service import acquire_seat_lock, release_seat_lock
 
 logger = logging.getLogger(__name__)
+
+
+def broadcast_seat_update(event_id, seat_id, status_value):
+    """
+    Push a seat status change to everyone viewing this event's seat map
+    over WebSocket, via the events_<id>_seats Channels group.
+    """
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"event_{event_id}_seats",
+        {
+            "type": "seat_update",
+            "seat_id": seat_id,
+            "status": status_value,
+        }
+    )
 
 
 class EventListView(generics.ListAPIView):
@@ -72,6 +90,8 @@ class LockSeatView(APIView):
         seat.locked_at = timezone.now()
         seat.save(update_fields=["status", "locked_by", "locked_at"])
 
+        broadcast_seat_update(seat.event_id, seat.id, seat.status)
+
         return Response(
             {
                 "message": "Seat locked successfully. You have 10 minutes to complete checkout.",
@@ -108,6 +128,8 @@ class ReleaseSeatView(APIView):
         seat.locked_by = None
         seat.locked_at = None
         seat.save(update_fields=["status", "locked_by", "locked_at"])
+
+        broadcast_seat_update(seat.event_id, seat.id, seat.status)
 
         return Response(
             {"message": "Seat released successfully."},
@@ -150,6 +172,8 @@ class CreateBookingView(APIView):
         # Mark seat as booked
         seat.status = Seat.Status.BOOKED
         seat.save(update_fields=["status"])
+
+        broadcast_seat_update(seat.event_id, seat.id, seat.status)
 
         return Response(
             BookingSerializer(booking).data,
