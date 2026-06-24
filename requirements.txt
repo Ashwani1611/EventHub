@@ -9,3 +9,8 @@ channels-redis==4.2.0
 celery==5.4.0
 razorpay==1.4.2
 setuptools<82
+drf-spectacular
+daphne
+pytest
+pytest-django
+faker
