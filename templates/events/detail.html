@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} — EventHub{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <a href="/" class="btn btn-outline-secondary btn-sm mb-3">
+            <i class="bi bi-arrow-left"></i> Back to Events
+        </a>
+        <h2 class="fw-bold">{{ event.title }}</h2>
+        <p class="text-muted">
+            <i class="bi bi-calendar3"></i> {{ event.date|date:"D, d M Y, P" }} &nbsp;
+            <i class="bi bi-geo-alt text-danger"></i> {{ event.venue }}
+        </p>
+        <p>{{ event.description }}</p>
+        <p class="fs-5">
+            <i class="bi bi-currency-rupee text-success"></i>
+            <strong>{{ event.price }}</strong> per seat
+        </p>
+    </div>
+</div>
+
+<h4 class="fw-bold mb-3"><i class="bi bi-grid-3x3"></i> Select a Seat</h4>
+
+<div class="mb-3">
+    <span class="badge bg-success me-2">&#9632; Available</span>
+    <span class="badge bg-warning text-dark me-2">&#9632; Locked</span>
+    <span class="badge bg-danger me-2">&#9632; Booked</span>
+</div>
+
+{% if seats %}
+<div class="row row-cols-2 row-cols-md-6 g-2" id="seat-grid">
+    {% for seat in seats %}
+    <div class="col">
+        <button
+            class="btn w-100 seat-btn
+                {% if seat.status == 'available' %}btn-success
+                {% elif seat.status == 'locked' %}btn-warning
+                {% else %}btn-danger{% endif %}"
+            data-seat-id="{{ seat.id }}"
+            data-status="{{ seat.status }}"
+            {% if seat.status != 'available' %}disabled{% endif %}
+        >
+            {{ seat.row }}{{ seat.number }}
+        </button>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-4">
+    <i class="bi bi-x-circle display-4 text-muted"></i>
+    <p class="mt-2 text-muted">No seats found for this event.</p>
+</div>
+{% endif %}
+
+<script>
+const seatGrid = document.getElementById("seat-grid");
+if (seatGrid) {
+    seatGrid.addEventListener("click", (e) => {
+        const btn = e.target.closest(".seat-btn");
+        if (!btn || btn.disabled) return;
+        const seatId = btn.dataset.seatId;
+        window.location.href = `/bookings/confirm/${seatId}/`;
+    });
+}
+</script>
+{% endblock %}

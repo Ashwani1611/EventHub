@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Booking — EventHub{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body p-4">
+                <h4 class="fw-bold mb-4"><i class="bi bi-ticket-perforated"></i> Confirm Your Booking</h4>
+                <table class="table">
+                    <tr>
+                        <th>Event</th>
+                        <td>{{ seat.event.title }}</td>
+                    </tr>
+                    <tr>
+                        <th>Date</th>
+                        <td>{{ seat.event.date|date:"D, d M Y, P" }}</td>
+                    </tr>
+                    <tr>
+                        <th>Venue</th>
+                        <td>{{ seat.event.venue }}</td>
+                    </tr>
+                    <tr>
+                        <th>Seat</th>
+                        <td>Row {{ seat.row }}, Seat {{ seat.number }}</td>
+                    </tr>
+                    <tr>
+                        <th>Amount</th>
+                        <td><strong>₹{{ seat.event.price }}</strong></td>
+                    </tr>
+                </table>
+                <form method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary w-100 mt-2">
+                        <i class="bi bi-check-circle"></i> Confirm & Proceed to Payment
+                    </button>
+                </form>
+                <a href="/events/{{ seat.event.id }}/" class="btn btn-outline-secondary w-100 mt-2">
+                    Cancel
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
