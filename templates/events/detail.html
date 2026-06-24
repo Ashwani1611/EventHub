@@ -1,7 +1,5 @@
 {% extends "base.html" %}
-
 {% block title %}{{ event.title }} — EventHub{% endblock %}
-
 {% block content %}
 <div class="row mb-4">
     <div class="col">
@@ -20,15 +18,15 @@
         </p>
     </div>
 </div>
-
 <h4 class="fw-bold mb-3"><i class="bi bi-grid-3x3"></i> Select a Seat</h4>
-
 <div class="mb-3">
     <span class="badge bg-success me-2">&#9632; Available</span>
     <span class="badge bg-warning text-dark me-2">&#9632; Locked</span>
     <span class="badge bg-danger me-2">&#9632; Booked</span>
+    <span id="ws-status" class="badge bg-secondary ms-2" style="display:none;">
+        <i class="bi bi-wifi-off"></i> Reconnecting...
+    </span>
 </div>
-
 {% if seats %}
 <div class="row row-cols-2 row-cols-md-6 g-2" id="seat-grid">
     {% for seat in seats %}
@@ -56,6 +54,8 @@
 
 <script>
 const seatGrid = document.getElementById("seat-grid");
+const wsStatusBadge = document.getElementById("ws-status");
+
 if (seatGrid) {
     seatGrid.addEventListener("click", (e) => {
         const btn = e.target.closest(".seat-btn");
@@ -63,6 +63,75 @@ if (seatGrid) {
         const seatId = btn.dataset.seatId;
         window.location.href = `/bookings/confirm/${seatId}/`;
     });
+}
+
+// ── Live seat map via WebSocket ──────────────────────────────────────────
+const STATUS_CLASSES = {
+    available: "btn-success",
+    locked:    "btn-warning",
+    booked:    "btn-danger",
+};
+
+function applySeatStatus(seatId, status) {
+    const btn = seatGrid.querySelector(`.seat-btn[data-seat-id="${seatId}"]`);
+    if (!btn) return;  // seat not on this page (shouldn't happen, but stay safe)
+
+    // Remove whichever status class is currently set, then apply the new one
+    Object.values(STATUS_CLASSES).forEach(cls => btn.classList.remove(cls));
+    btn.classList.add(STATUS_CLASSES[status] || "btn-secondary");
+
+    btn.dataset.status = status;
+    btn.disabled = status !== "available";
+}
+
+let socket = null;
+let reconnectAttempt = 0;
+
+function connectSeatSocket() {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const eventId = "{{ event.id }}";
+    const url = `${protocol}//${window.location.host}/ws/events/${eventId}/seats/`;
+
+    socket = new WebSocket(url);
+
+    socket.onopen = () => {
+        reconnectAttempt = 0;
+        wsStatusBadge.style.display = "none";
+    };
+
+    socket.onmessage = (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            if (data.seat_id !== undefined && data.status) {
+                applySeatStatus(data.seat_id, data.status);
+            }
+        } catch (err) {
+            console.warn("Seat map: received malformed message", err);
+        }
+    };
+
+    socket.onclose = (e) => {
+        // 4001 = not authenticated, 4004 = event not found — both are
+        // permanent failures, not worth retrying.
+        if (e.code === 4001 || e.code === 4004) {
+            console.warn(`Seat map socket closed permanently (code ${e.code})`);
+            return;
+        }
+
+        wsStatusBadge.style.display = "inline-block";
+        reconnectAttempt += 1;
+        const delay = Math.min(1000 * 2 ** reconnectAttempt, 15000); // capped exponential backoff
+        setTimeout(connectSeatSocket, delay);
+    };
+
+    socket.onerror = () => {
+        // onclose will fire right after this and handle the actual retry
+        console.warn("Seat map socket error");
+    };
+}
+
+if (seatGrid) {
+    connectSeatSocket();
 }
 </script>
 {% endblock %}

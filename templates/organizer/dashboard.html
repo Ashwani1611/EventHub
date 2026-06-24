@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Organizer Dashboard{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold">My Events</h2>
+  </div>
+
+  {% if events %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Title</th>
+            <th>Venue</th>
+            <th>Date</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Total Seats</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in events %}
+            <tr>
+              <td class="fw-semibold">{{ event.title }}</td>
+              <td>{{ event.venue }}</td>
+              <td>{{ event.date|date:"d M Y, H:i" }}</td>
+              <td>₹{{ event.price }}</td>
+              <td>
+                {% if event.status == "published" %}
+                  <span class="badge bg-success">Published</span>
+                {% elif event.status == "draft" %}
+                  <span class="badge bg-secondary">Draft</span>
+                {% else %}
+                  <span class="badge bg-danger">Cancelled</span>
+                {% endif %}
+              </td>
+              <td>{{ event.seats.count }}</td>
+              <td>
+                <a href="{% url 'frontend:event_detail' event.id %}"
+                   class="btn btn-sm btn-outline-primary">View</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  {% else %}
+    <div class="alert alert-info">You have not created any events yet.</div>
+  {% endif %}
+
+</div>
+{% endblock %}

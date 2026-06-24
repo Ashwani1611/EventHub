@@ -1,11 +1,12 @@
 import logging
-from django.utils import timezone
 from django.conf import settings
 from redis import Redis
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 logger = logging.getLogger(__name__)
 
-LOCK_TTL_SECONDS = 600  # 10 minutes
+LOCK_TTL_SECONDS = 600
 LOCK_PREFIX = "seat_lock"
 
 redis_client = Redis(
@@ -20,21 +21,37 @@ def _lock_key(seat_id: int) -> str:
     return f"{LOCK_PREFIX}:{seat_id}"
 
 
+def _broadcast_seat_update(event_id: int, seat_id: int, status_value: str):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"event_{event_id}_seats",
+        {
+            "type": "seat_update",
+            "seat_id": seat_id,
+            "status": status_value,
+        }
+    )
+
+
+def _broadcast_current_seat_status(seat_id: int):
+    """
+    Reads the seat's actual current DB status and broadcasts it.
+    Used after lock/release so the WebSocket always reports truth,
+    not an assumption about what status "should" be at that point.
+    """
+    try:
+        from events.models import Seat
+        seat = Seat.objects.only("event_id", "status").get(id=seat_id)
+        _broadcast_seat_update(seat.event_id, seat_id, seat.status)
+    except Exception:
+        logger.exception(f"Failed to broadcast seat update | seat_id={seat_id}")
+
+
 def acquire_seat_lock(seat_id: int, user_id: int) -> bool:
-    """
-    Try to acquire a Redis lock for a seat.
-    Returns True if lock was acquired, False if seat is already locked.
-    Uses SET NX PX — atomic operation, safe under concurrent requests.
-    """
     key = _lock_key(seat_id)
     value = str(user_id)
 
-    acquired = redis_client.set(
-        key,
-        value,
-        nx=True,        # Only set if key does NOT exist
-        ex=LOCK_TTL_SECONDS
-    )
+    acquired = redis_client.set(key, value, nx=True, ex=LOCK_TTL_SECONDS)
 
     if acquired:
         logger.info(f"Seat lock acquired | seat_id={seat_id} | user_id={user_id}")
@@ -45,10 +62,6 @@ def acquire_seat_lock(seat_id: int, user_id: int) -> bool:
 
 
 def release_seat_lock(seat_id: int, user_id: int) -> bool:
-    """
-    Release the lock only if the requesting user owns it.
-    Prevents a user from releasing another user's lock.
-    """
     key = _lock_key(seat_id)
     current_owner = redis_client.get(key)
 
@@ -65,20 +78,14 @@ def release_seat_lock(seat_id: int, user_id: int) -> bool:
 
 
 def is_seat_locked(seat_id: int) -> bool:
-    """Check if a seat lock exists in Redis."""
     return redis_client.exists(_lock_key(seat_id)) == 1
 
 
 def get_lock_owner(seat_id: int):
-    """Return the user_id who holds the lock, or None."""
     return redis_client.get(_lock_key(seat_id))
 
 
 def extend_seat_lock(seat_id: int, user_id: int) -> bool:
-    """
-    Extend the lock TTL if the user still owns it.
-    Useful if the frontend needs to keep the seat held longer.
-    """
     key = _lock_key(seat_id)
     current_owner = redis_client.get(key)
 

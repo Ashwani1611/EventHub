@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.conf import settings
 
 from events.models import Event, Seat, Booking
-from events.lock_service import acquire_seat_lock, release_seat_lock, get_lock_owner
+from events.lock_service import acquire_seat_lock, release_seat_lock, get_lock_owner, _broadcast_current_seat_status
 from payments.models import Payment
 from payments.services import create_payment_order
 
@@ -52,6 +52,7 @@ def confirm_booking(request, seat_id):
                 return redirect('frontend:event_detail', event_id=seat.event.id)
             seat.status = 'locked'
             seat.save()
+            _broadcast_current_seat_status(seat.id)
 
         # If owner == this user already (e.g. page refresh), just fall through
         return render(request, 'bookings/confirm.html', {'seat': seat})
@@ -118,6 +119,7 @@ def payment_success(request, booking_id):
 
                 booking.seat.status = 'booked'
                 booking.seat.save()
+                _broadcast_current_seat_status(booking.seat.id)
 
                 release_seat_lock(booking.seat.id, request.user.id)
             except Payment.DoesNotExist:
@@ -133,6 +135,9 @@ def payment_success(request, booking_id):
 @login_required(login_url='/accounts/login/')
 def payment_failed(request, booking_id):
     booking = get_object_or_404(Booking, id=booking_id, user=request.user)
+    booking.seat.status = 'available'
+    booking.seat.save()
+    _broadcast_current_seat_status(booking.seat.id)
     release_seat_lock(booking.seat.id, request.user.id)
     return render(request, 'payments/failed.html', {'booking': booking})
 
@@ -173,3 +178,31 @@ def register_view(request):
 def logout_view(request):
     logout(request)
     return redirect('frontend:login')
+
+@login_required(login_url='/accounts/login/')
+def organizer_dashboard(request):
+    if request.user.role != 'organizer':
+        messages.error(request, 'Access denied. Organizer account required.')
+        return redirect('frontend:home')
+
+    events = Event.objects.filter(
+        organizer=request.user
+    ).prefetch_related('seats').order_by('-created_at')
+
+    return render(request, 'organizer/dashboard.html', {'events': events})
+
+
+@login_required(login_url='/accounts/login/')
+def notifications_view(request):
+    from notifications.models import Notification
+
+    notifications = Notification.objects.filter(
+        recipient=request.user
+    ).order_by('-created_at')
+
+    # Mark all as read
+    notifications.filter(is_read=False).update(is_read=True)
+
+    return render(request, 'notifications/notifications.html', {
+        'notifications': notifications
+    })
