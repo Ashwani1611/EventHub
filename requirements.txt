@@ -19,3 +19,5 @@ langchain-community
 langchain-huggingface
 chromadb
 sentence-transformerslangchain-chroma
+django-allauth
+django-cors-headers
