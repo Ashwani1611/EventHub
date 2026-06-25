@@ -210,3 +210,4 @@ AUTH_USER_MODEL = 'accounts.User'
 
 APPEND_SLASH = True
 
+CHROMA_DB_PATH = os.path.join(BASE_DIR, "chromadb_data")

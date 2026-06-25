@@ -206,3 +206,26 @@ def notifications_view(request):
     return render(request, 'notifications/notifications.html', {
         'notifications': notifications
     })
+def event_search(request):
+    query = request.GET.get("q", "").strip()
+    results = []
+
+    if query and len(query) >= 3:
+        from events.embedding_service import search_events as semantic_search
+        from events.models import Event
+
+        event_ids = semantic_search(query, n_results=10)
+
+        if event_ids:
+            event_map = {
+                e.id: e for e in Event.objects.filter(
+                    id__in=event_ids,
+                    status=Event.Status.PUBLISHED
+                )
+            }
+            results = [event_map[eid] for eid in event_ids if eid in event_map]
+
+    return render(request, "events/search.html", {
+        "query": query,
+        "results": results,
+    })

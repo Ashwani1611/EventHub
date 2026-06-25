@@ -8,6 +8,7 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from .embedding_service import search_events as semantic_search
 
 from .models import Event, Seat, Booking
 from .serializers import EventSerializer, SeatSerializer, BookingSerializer
@@ -190,3 +191,49 @@ class MyBookingsView(generics.ListAPIView):
         return Booking.objects.filter(
             user=self.request.user
         ).select_related("seat", "seat__event")
+    
+class EventSearchView(APIView):
+    """
+    Public — semantic search over published events.
+    GET /api/events/search/?q=music+night+delhi
+    """
+    permission_classes = []
+
+    def get(self, request):
+        query = request.query_params.get("q", "").strip()
+
+        if not query:
+            return Response(
+                {"error": "Query parameter 'q' is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(query) < 3:
+            return Response(
+                {"error": "Query must be at least 3 characters."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get semantically similar event IDs from ChromaDB
+        event_ids = semantic_search(query, n_results=10)
+
+        if not event_ids:
+            return Response({"results": [], "count": 0})
+
+        # Fetch from DB preserving ChromaDB ranking order
+        events = Event.objects.filter(
+            id__in=event_ids,
+            status=Event.Status.PUBLISHED
+        ).prefetch_related("seats")
+
+        # Preserve semantic ranking order
+        event_map = {e.id: e for e in events}
+        ordered_events = [
+            event_map[eid] for eid in event_ids if eid in event_map
+        ]
+
+        return Response({
+            "query": query,
+            "count": len(ordered_events),
+            "results": EventSerializer(ordered_events, many=True).data
+        })

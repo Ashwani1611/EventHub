@@ -15,4 +15,5 @@ urlpatterns = [
     path('accounts/logout/', views.logout_view, name='logout'),
     path('organizer/dashboard/', views.organizer_dashboard, name='organizer_dashboard'),
     path('notifications/', views.notifications_view, name='notifications'),
+    path('events/search/', views.event_search, name='event_search'),
 ]
